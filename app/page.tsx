@@ -7,6 +7,11 @@ type Result = {
   url: string;
   content?: string;
   engines?: string[];
+
+  // Image results from SearXNG
+  img_src?: string;
+  thumbnail_src?: string;
+  img_format?: string;
 };
 
 const tabs = [
@@ -23,10 +28,8 @@ export default function Home() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSearch(event: FormEvent) {
-    event.preventDefault();
-
-    const trimmedQuery = query.trim();
+  async function performSearch(searchQuery: string, category: string) {
+    const trimmedQuery = searchQuery.trim();
 
     if (!trimmedQuery) return;
 
@@ -36,7 +39,9 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `/api/search?q=${encodeURIComponent(trimmedQuery)}&category=${activeTab}`
+        `/api/search?q=${encodeURIComponent(
+          trimmedQuery
+        )}&category=${encodeURIComponent(category)}`
       );
 
       const data = await response.json();
@@ -56,17 +61,32 @@ export default function Home() {
     }
   }
 
+  async function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    await performSearch(query, activeTab);
+  }
+
   function changeTab(category: string) {
     setActiveTab(category);
 
     if (query.trim()) {
-      setTimeout(() => {
-        document
-          .getElementById("search-form")
-          ?.dispatchEvent(new Event("submit", { bubbles: true }));
-      }, 0);
+      performSearch(query, category);
     }
   }
+
+  function clearSearch() {
+    setQuery("");
+    setResults([]);
+    setSearched(false);
+    setError("");
+  }
+
+  function searchSuggestion(item: string) {
+    setQuery(item);
+    performSearch(item, activeTab);
+  }
+
+  const isImageSearch = activeTab === "images";
 
   return (
     <main className="search-page">
@@ -82,7 +102,11 @@ export default function Home() {
           </p>
         )}
 
-        <form id="search-form" onSubmit={handleSearch} className="search-form">
+        <form
+          id="search-form"
+          onSubmit={handleSearch}
+          className="search-form"
+        >
           <input
             type="text"
             value={query}
@@ -95,17 +119,18 @@ export default function Home() {
             <button
               type="button"
               className="clear-button"
-              onClick={() => {
-                setQuery("");
-                setResults([]);
-                setSearched(false);
-              }}
+              onClick={clearSearch}
+              aria-label="Clear search"
             >
               ×
             </button>
           )}
 
-          <button type="submit" className="search-button">
+          <button
+            type="submit"
+            className="search-button"
+            aria-label="Search"
+          >
             <svg
               width="21"
               height="21"
@@ -124,7 +149,10 @@ export default function Home() {
           {tabs.map((tab) => (
             <button
               key={tab.category}
-              className={activeTab === tab.category ? "active" : ""}
+              type="button"
+              className={
+                activeTab === tab.category ? "active" : ""
+              }
               onClick={() => changeTab(tab.category)}
             >
               {tab.label}
@@ -134,7 +162,11 @@ export default function Home() {
       </header>
 
       {searched && (
-        <section className="results-area">
+        <section
+          className={`results-area ${
+            isImageSearch ? "image-results-area" : ""
+          }`}
+        >
           {loading && (
             <div className="status">
               <div className="spinner" />
@@ -150,9 +182,63 @@ export default function Home() {
             </div>
           )}
 
+          {/* IMAGE RESULTS */}
           {!loading &&
+            !error &&
+            isImageSearch &&
+            results.length > 0 && (
+              <div className="image-grid">
+                {results.map((result, index) => {
+                  const imageUrl =
+                    result.thumbnail_src || result.img_src;
+
+                  return (
+                    <a
+                      key={`${result.url}-${index}`}
+                      href={result.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="image-card"
+                    >
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={result.title}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="image-placeholder">
+                          No image
+                        </div>
+                      )}
+
+                      <div className="image-info">
+                        <div className="image-title">
+                          {result.title}
+                        </div>
+
+                        {result.engines &&
+                          result.engines.length > 0 && (
+                            <div className="image-engine">
+                              {result.engines[0]}
+                            </div>
+                          )}
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+
+          {/* WEB / NEWS RESULTS */}
+          {!loading &&
+            !error &&
+            !isImageSearch &&
             results.map((result, index) => (
-              <article className="result-card" key={`${result.url}-${index}`}>
+              <article
+                className="result-card"
+                key={`${result.url}-${index}`}
+              >
                 <a
                   href={result.url}
                   target="_blank"
@@ -162,19 +248,24 @@ export default function Home() {
                   {result.title}
                 </a>
 
-                <div className="result-url">{result.url}</div>
+                <div className="result-url">
+                  {result.url}
+                </div>
 
                 {result.content && (
-                  <p className="result-content">{result.content}</p>
+                  <p className="result-content">
+                    {result.content}
+                  </p>
                 )}
 
-                {result.engines && result.engines.length > 0 && (
-                  <div className="engines">
-                    {result.engines.map((engine) => (
-                      <span key={engine}>{engine}</span>
-                    ))}
-                  </div>
-                )}
+                {result.engines &&
+                  result.engines.length > 0 && (
+                    <div className="engines">
+                      {result.engines.map((engine) => (
+                        <span key={engine}>{engine}</span>
+                      ))}
+                    </div>
+                  )}
               </article>
             ))}
         </section>
@@ -193,18 +284,8 @@ export default function Home() {
             ].map((item) => (
               <button
                 key={item}
-                onClick={() => {
-                  setQuery(item);
-                  setSearched(true);
-
-                  setTimeout(() => {
-                    document
-                      .getElementById("search-form")
-                      ?.dispatchEvent(
-                        new Event("submit", { bubbles: true })
-                      );
-                  }, 0);
-                }}
+                type="button"
+                onClick={() => searchSuggestion(item)}
               >
                 {item}
               </button>
