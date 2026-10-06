@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SEARXNG_URL = "http://localhost:8080";
+const SEARXNG_URL =
+  process.env.SEARXNG_URL || "http://localhost:8080";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
